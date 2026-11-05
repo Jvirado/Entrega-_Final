@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # 1. Base de datos con soporte Geoespacial
+  mongodb:
+    image: mongo:latest
+    container_name: lifemap-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - lifemap-net
+
+  # 2. Spark Master
+  spark-master:
+    image: bitnami/spark:3.5
+    container_name: lifemap-spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    networks:
+      - lifemap-net
+
+  # 3. Spark Worker
+  spark-worker:
+    image: bitnami/spark:3.5
+    container_name: lifemap-spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+    depends_on:
+      - spark-master
+    networks:
+      - lifemap-net
+
+  # 4. Dask Scheduler
+  dask-scheduler:
+    image: daskdev/dask:latest
+    container_name: lifemap-dask-scheduler
+    command: dask-scheduler
+    ports:
+      - "8786:8786"
+      - "8787:8787"
+    networks:
+      - lifemap-net
+
+  # 5. Dask Worker
+  dask-worker:
+    image: daskdev/dask:latest
+    container_name: lifemap-dask-worker
+    command: dask-worker tcp://dask-scheduler:8786
+    depends_on:
+      - dask-scheduler
+    networks:
+      - lifemap-net
+
+  # 6. API Flask (Construida desde el Dockerfile local)
+  api:
+    build: .
+    container_name: lifemap-api
+    ports:
+      - "5000:5000"
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/
+      - SPARK_MASTER=spark://spark-master:7077
+    depends_on:
+      - mongodb
+      - spark-master
+    networks:
+      - lifemap-net
+
+  # 7. Jenkins (CI/CD)
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: lifemap-jenkins
+    privileged: true
+    user: root
+    ports:
+      - "8081:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      # TRAMPA 1 RESUELTA: Montar el socket de Docker para que Jenkins pueda construir imágenes
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - lifemap-net
+
+volumes:
+  mongo_data:
+  jenkins_home:
+
+networks:
+  lifemap-net:
+    driver: bridge

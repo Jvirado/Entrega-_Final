@@ -1,0 +1,59 @@
+pipeline {
+    agent any
+
+    environment {
+        // Credencial configurada en Jenkins (ID: kaggle-token)
+        // Tipo: Secret file (kaggle.json)
+        KAGGLE_CONFIG_DIR = credentials('kaggle-token')
+        DOCKER_COMPOSE = 'docker compose'
+    }
+
+    // Si no tienes webhook, descomenta la siguiente línea para hacer pollSCM cada 2 min
+    // triggers { pollSCM('H/2 * * * *') }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                // Jenkins extrae el código de la rama main
+                checkout scm
+                sh 'echo "Commit actual: $GIT_COMMIT"'
+            }
+        }
+
+        stage('Construir Imágenes') {
+            steps {
+                sh "${DOCKER_COMPOSE} build"
+            }
+        }
+
+        stage('Pruebas (pytest)') {
+            steps {
+                // Levanta solo MongoDB y ejecuta las pruebas en la API
+                sh "${DOCKER_COMPOSE} up -d mongodb"
+                // Suponiendo que tienes un script de pruebas en la carpeta /tests
+                // Aquí es donde fallaría el pipeline y se detiene el despliegue
+                sh "docker run --rm --network lifemap-net -v \$(pwd):/app lifemap-api pytest tests/ -v"
+            }
+        }
+
+        stage('Desplegar') {
+            steps {
+                // Si las pruebas pasan, se levanta todo en modo detached
+                sh "${DOCKER_COMPOSE} up -d --remove-orphans"
+                
+                // Verificación de salud post-despliegue (opcional pero recomendado)
+                sh 'sleep 10'
+                sh 'curl -f http://localhost:5000/health || exit 1'
+            }
+        }
+    }
+
+    post {
+        always {
+            sh "${DOCKER_COMPOSE} down"
+        }
+        failure {
+            echo '⚠️ El pipeline falló. El despliegue se ha detenido.'
+        }
+    }
+}
