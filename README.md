@@ -1,6 +1,6 @@
-====================================================================
+
 LIFEMAP: REPUTACIÓN, UBICACIÓN Y SUPERVIVENCIA DE NEGOCIOS - ENTREGA 1
-====================================================================
+
 
 Curso: Big Data · Institución Universitaria de Envigado
 Área Metropolitana: Philadelphia, PA
